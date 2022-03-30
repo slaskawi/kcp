@@ -24,6 +24,7 @@ import (
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	"github.com/stretchr/testify/require"
+	v12 "k8s.io/api/rbac/v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -127,6 +128,28 @@ func TestAuthorizer(t *testing.T) {
 		"non-cluster admins can not use wildcard clusters": func(t *testing.T) {
 			_, err := user1KubeClusterClient.Cluster(logicalcluster.Wildcard).CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 			require.Error(t, err, "Only cluster admins can use all clusters at once")
+		},
+		"with org access, workspace2 admin user-2 can create ClusterRoleBinding referencing k8s ClusterRoles": func(t *testing.T) {
+			crossRefRoleBinding := &v12.ClusterRoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "user-2-k8s-ref",
+				},
+				Subjects: []v12.Subject{
+					{
+						Kind:     "User",
+						APIGroup: "rbac.authorization.k8s.io",
+						Name:     "user-1",
+					},
+				},
+				RoleRef: v12.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "ClusterRole",
+					Name:     "system:certificates.k8s.io:kube-apiserver-client-approver",
+				},
+			}
+
+			_, err = user2KubeClusterClient.Cluster(org1.Join("workspace2")).RbacV1().ClusterRoleBindings().Create(ctx, crossRefRoleBinding, metav1.CreateOptions{})
+			require.NoError(t, err, "user-2 should be able to create ClusterRoleBindings referring to k8s ClusterRoles")
 		},
 	}
 
